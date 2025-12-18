@@ -1,0 +1,412 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Page configuration
+st.set_page_config(
+    page_title="Singapore Population Analysis",
+    page_icon="👥",
+    layout="wide"
+)
+
+# Custom CSS
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 3rem;
+        color: #1e40af;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        font-size: 1.2rem;
+        color: #64748b;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Title
+st.markdown('<h1 class="main-header">🇸🇬 Singapore Population Analysis</h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Interactive demographic data visualization (2000-2018)</p>', unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.header("📁 Data Upload")
+    uploaded_file = st.file_uploader(
+        "Upload Singapore_Residents.csv", 
+        type=['csv'],
+        help="Upload the CSV file containing Singapore population data"
+    )
+    
+    st.divider()
+    
+    st.header("ℹ️ About")
+    st.info("""
+    This app analyzes Singapore's resident population data from 2000-2018, including:
+    - Total population trends
+    - Gender ratios by ethnic groups
+    - Population growth metrics
+    """)
+
+# Main content
+if uploaded_file is not None:
+    # Read the CSV file
+    df = pd.read_csv(uploaded_file)
+    
+    st.success(f"✅ Data loaded successfully! ({len(df)} rows × {len(df.columns)} columns)")
+    
+    # Show data preview
+    with st.expander("🔍 View Raw Data"):
+        st.dataframe(df, use_container_width=True)
+    
+    st.divider()
+    
+    # Create tabs
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Total Population",
+        "⚖️ Gender Ratios", 
+        "📈 Population Growth"
+    ])
+    
+    # ==================== TAB 1: TOTAL POPULATION ====================
+    with tab1:
+        st.header("1️⃣ Total Population Every Year")
+        st.markdown("*Sum of all population counts grouped by year*")
+        
+        # Calculate total population by year
+        total_population_df = df.groupby('Year')['Count'].sum().reset_index()
+        total_population_df.columns = ['Year', 'Total_Population']
+        
+        # Create two columns
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            # Create line chart
+            fig1 = px.line(
+                total_population_df,
+                x='Year',
+                y='Total_Population',
+                title='Total Population Trend (2000-2018)',
+                markers=True
+            )
+            fig1.update_traces(
+                line_color='#4f46e5', 
+                line_width=3,
+                marker=dict(size=8)
+            )
+            fig1.update_layout(
+                xaxis_title="Year",
+                yaxis_title="Total Population",
+                hovermode='x unified',
+                height=500
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        with col2:
+            st.metric(
+                "Starting Year",
+                "2000",
+                delta=f"{total_population_df.iloc[0]['Total_Population']:,.0f}"
+            )
+            st.metric(
+                "Ending Year", 
+                "2018",
+                delta=f"{total_population_df.iloc[-1]['Total_Population']:,.0f}"
+            )
+            change = total_population_df.iloc[-1]['Total_Population'] - total_population_df.iloc[0]['Total_Population']
+            st.metric(
+                "Total Change",
+                f"{change:,.0f}",
+                delta=f"{(change/total_population_df.iloc[0]['Total_Population']*100):.1f}%"
+            )
+        
+        # Display table
+        st.subheader("📋 Detailed Population Data")
+        display_df = total_population_df.copy()
+        display_df['Total_Population'] = display_df['Total_Population'].apply(lambda x: f"{x:,}")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    
+    # ==================== TAB 2: GENDER RATIOS ====================
+    with tab2:
+        st.header("2️⃣ Female to Male Ratios")
+        st.markdown("*Analysis for all ethnic groups at 3-year intervals*")
+        
+        # Define years and groups
+        years = [2000, 2003, 2006, 2009, 2012, 2015, 2018]
+        groups = {
+            'Total': ('Total Male Residents', 'Total Female Residents'),
+            'Malays': ('Total Male Malays', 'Total Female Malays'),
+            'Chinese': ('Total Male Chinese', 'Total Female Chinese'),
+            'Indians': ('Total Male Indians', 'Total Female Indians'),
+            'Others': ('Other Ethnic Groups (Males)', 'Other Ethnic Groups (Females)')
+        }
+        
+        # Calculate ratios
+        ratio_data = []
+        detailed_data = []
+        
+        for year in years:
+            row_data = {'Year': year}
+            for group_name, (male_label, female_label) in groups.items():
+                try:
+                    male = df[(df['Year'] == year) & (df['Residents'] == male_label)]['Count'].values[0]
+                    female = df[(df['Year'] == year) & (df['Residents'] == female_label)]['Count'].values[0]
+                    ratio = female / male
+                    
+                    row_data[group_name] = round(ratio, 4)
+                    row_data[f'{group_name}_male'] = male
+                    row_data[f'{group_name}_female'] = female
+                except:
+                    row_data[group_name] = None
+            
+            ratio_data.append(row_data)
+        
+        ratio_df = pd.DataFrame(ratio_data)
+        
+        # Create line chart
+        fig2 = go.Figure()
+        colors = {
+            'Total': '#4f46e5',
+            'Malays': '#10b981',
+            'Chinese': '#f59e0b',
+            'Indians': '#ef4444',
+            'Others': '#8b5cf6'
+        }
+        
+        for group in ['Total', 'Malays', 'Chinese', 'Indians', 'Others']:
+            fig2.add_trace(go.Scatter(
+                x=ratio_df['Year'],
+                y=ratio_df[group],
+                mode='lines+markers',
+                name=group,
+                line=dict(color=colors[group], width=3),
+                marker=dict(size=10)
+            ))
+        
+        fig2.update_layout(
+            title='Female to Male Ratios by Ethnic Group',
+            xaxis_title='Year',
+            yaxis_title='Female/Male Ratio',
+            hovermode='x unified',
+            yaxis=dict(range=[0.85, 1.2]),
+            height=500,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # Detailed breakdown by year
+        st.subheader("📋 Detailed Gender Ratio Breakdown")
+        
+        for year in years:
+            with st.expander(f"**{year}** - Click to expand"):
+                cols = st.columns(5)
+                
+                for idx, (group_name, (male_label, female_label)) in enumerate(groups.items()):
+                    with cols[idx]:
+                        try:
+                            male = df[(df['Year'] == year) & (df['Residents'] == male_label)]['Count'].values[0]
+                            female = df[(df['Year'] == year) & (df['Residents'] == female_label)]['Count'].values[0]
+                            ratio = female / male
+                            
+                            st.markdown(f"**{group_name}**")
+                            st.metric(
+                                label="Ratio",
+                                value=f"{ratio:.4f}"
+                            )
+                            st.caption(f"M: {male:,}")
+                            st.caption(f"F: {female:,}")
+                        except:
+                            st.error("Data not found")
+        
+        # Summary table
+        st.subheader("📊 Ratio Summary Table")
+        summary_df = ratio_df[['Year', 'Total', 'Malays', 'Chinese', 'Indians', 'Others']].copy()
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    
+    # ==================== TAB 3: POPULATION GROWTH ====================
+    with tab3:
+        st.header("3️⃣ Population Growth Analysis")
+        st.markdown("*Year-over-Year and cumulative growth percentages*")
+        
+        # Filter for total residents
+        pop = df[df['Residents'] == 'Total Residents'].sort_values('Year').copy()
+        
+        # Calculate growth
+        pop['Growth_YoY'] = pop['Count'].pct_change() * 100
+        pop['Running_Total'] = ((pop['Count'] - pop['Count'].iloc[0]) / pop['Count'].iloc[0]) * 100
+        
+        # Summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric(
+                "Starting Population (2000)",
+                f"{pop.iloc[0]['Count']:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                "Ending Population (2018)",
+                f"{pop.iloc[-1]['Count']:,.0f}",
+                delta=f"+{pop.iloc[-1]['Count'] - pop.iloc[0]['Count']:,.0f}"
+            )
+        
+        with col3:
+            avg_growth = pop['Growth_YoY'].mean()
+            st.metric(
+                "Average YoY Growth",
+                f"{avg_growth:.2f}%"
+            )
+        
+        with col4:
+            total_growth = pop['Running_Total'].iloc[-1]
+            st.metric(
+                "Total Growth (2000-2018)",
+                f"{total_growth:.2f}%"
+            )
+        
+        st.divider()
+        
+        # Create dual chart
+        fig3 = go.Figure()
+        
+        # Add YoY growth bars
+        fig3.add_trace(go.Bar(
+            x=pop['Year'],
+            y=pop['Growth_YoY'],
+            name='Year-over-Year Growth %',
+            marker_color='#4f46e5',
+            yaxis='y'
+        ))
+        
+        # Add cumulative line
+        fig3.add_trace(go.Scatter(
+            x=pop['Year'],
+            y=pop['Running_Total'],
+            name='Cumulative Growth from 2000 %',
+            mode='lines+markers',
+            line=dict(color='#10b981', width=3),
+            marker=dict(size=10),
+            yaxis='y2'
+        ))
+        
+        fig3.update_layout(
+            title='Population Growth Metrics',
+            xaxis_title='Year',
+            yaxis=dict(
+                title='Year-over-Year Growth %',
+                titlefont=dict(color='#4f46e5'),
+                tickfont=dict(color='#4f46e5')
+            ),
+            yaxis2=dict(
+                title='Cumulative Growth %',
+                titlefont=dict(color='#10b981'),
+                tickfont=dict(color='#10b981'),
+                overlaying='y',
+                side='right'
+            ),
+            hovermode='x unified',
+            height=500,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        # Detailed table
+        st.subheader("📋 Year-by-Year Growth Data")
+        
+        growth_table = pop[['Year', 'Count', 'Growth_YoY', 'Running_Total']].copy()
+        growth_table.columns = ['Year', 'Population', 'YoY Growth %', 'Cumulative Growth %']
+        
+        # Format table
+        display_growth = growth_table.copy()
+        display_growth['Population'] = display_growth['Population'].apply(lambda x: f"{x:,}")
+        display_growth['YoY Growth %'] = display_growth['YoY Growth %'].apply(
+            lambda x: f"{x:.2f}%" if pd.notna(x) else "N/A"
+        )
+        display_growth['Cumulative Growth %'] = display_growth['Cumulative Growth %'].apply(
+            lambda x: f"{x:.2f}%"
+        )
+        
+        # Color code growth
+        def highlight_growth(row):
+            colors = [''] * len(row)
+            try:
+                yoy_val = float(row['YoY Growth %'].replace('%', '').replace('N/A', '0'))
+                if yoy_val < 0:
+                    colors = ['background-color: #fee2e2'] * len(row)
+                elif yoy_val > 2:
+                    colors = ['background-color: #d1fae5'] * len(row)
+            except:
+                pass
+            return colors
+        
+        st.dataframe(
+            display_growth.style.apply(highlight_growth, axis=1),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        st.caption("🟢 Green highlight: High growth (>2%) | 🔴 Red highlight: Negative growth")
+
+else:
+    # Landing page
+    st.info("👆 Please upload the **Singapore_Residents.csv** file from the sidebar to begin analysis")
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.subheader("📄 Expected CSV Format")
+        st.code("""Year,Residents,Count
+2000,Total Residents,3273363
+2000,Total Male Residents,1634667
+2000,Total Female Residents,1638696
+2000,Total Malays,455207
+...
+2018,Other Ethnic Groups (Females),69169""", language="csv")
+    
+    with col2:
+        st.subheader("📊 Features")
+        st.markdown("""
+        **Total Population Analysis**
+        - Yearly population trends
+        - Interactive visualizations
+        - Summary statistics
+        
+        **Gender Ratio Analysis**
+        - 5 ethnic groups comparison
+        - 3-year interval data points
+        - Detailed breakdowns
+        
+        **Growth Metrics**
+        - Year-over-year growth
+        - Cumulative growth tracking
+        - Visual trends
+        """)
+
+# Footer
+st.divider()
+st.markdown(
+    """
+    <div style='text-align: center; color: #64748b; padding: 20px;'>
+        <p><strong>Singapore Residents Population Data (2000-2018)</strong></p>
+        <p>Built with Streamlit 🎈 | Data Visualization with Plotly 📊</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
